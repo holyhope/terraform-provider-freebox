@@ -86,7 +86,7 @@ func (v *dhcpLeasesDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	leases := make([]attr.Value, len(dhcpLeases))
 	for i, dhcpLease := range dhcpLeases {
 		var lease dhcpLeaseModel
-		diags := lease.fromDHCPStaticLeaseInfo(dhcpLease)
+		diags := lease.fromDHCPStaticLeaseInfo(dhcpLease, "", "")
 		if diags.HasError() {
 			resp.Diagnostics.Append(diags...)
 			return

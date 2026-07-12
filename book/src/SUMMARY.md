@@ -12,6 +12,7 @@
     - [freebox_remote_file](./resources/remote_file.md)
     - [freebox_virtual_disk](./resources/virtual_disk.md)
     - [freebox_virtual_machine](./resources/virtual_machine.md)
+    - [freebox_virtual_machine_power](./resources/virtual_machine_power.md)
   - [Data Sources]()
     - [freebox_api_version](./data-sources/api_version.md)
     - [freebox_virtual_disk](./data-sources/virtual_disk.md)

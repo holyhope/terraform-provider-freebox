@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
@@ -14,6 +15,10 @@ import (
 	"github.com/nikolalohinski/terraform-provider-freebox/internal/models"
 	providerdata "github.com/nikolalohinski/terraform-provider-freebox/internal/provider_data"
 )
+
+func normalizeMAC(mac string) string {
+	return strings.ToUpper(mac)
+}
 
 func stopAndDeleteFileSystemTask(ctx context.Context, c client.Client, taskID int64) error {
 	errs := make([]error, 0, 2)

@@ -28,6 +28,20 @@ var (
 	_ resource.ResourceWithImportState = &dhcpLeaseResource{}
 )
 
+// dhcpLeaseHostname returns the hostname to store in state. When the Freebox API
+// has not yet learned a hostname (e.g. device still offline), it returns the MAC
+// address as a placeholder; in that case the configured value is preserved.
+func dhcpLeaseHostname(dhcpLeaseInfo freeboxTypes.DHCPStaticLeaseInfo, configuredHostname string) string {
+	hostname := dhcpLeaseInfo.Hostname
+	if configuredHostname == "" {
+		return hostname
+	}
+	if strings.EqualFold(normalizeMAC(hostname), normalizeMAC(dhcpLeaseInfo.Mac)) {
+		return configuredHostname
+	}
+	return hostname
+}
+
 func NewDhcpLeaseResource() resource.Resource {
 	return &dhcpLeaseResource{}
 }
@@ -46,19 +60,23 @@ type dhcpLeaseModel struct {
 	Mac      basetypes.StringValue `tfsdk:"mac"`
 }
 
-func (v *dhcpLeaseModel) fromLanInterfaceHost(ctx context.Context, c client.Client, lanInterfaceHost freeboxTypes.LanInterfaceHost) (diagnostics diag.Diagnostics) {
+func (v *dhcpLeaseModel) fromLanInterfaceHost(ctx context.Context, c client.Client, lanInterfaceHost freeboxTypes.LanInterfaceHost, configuredHostname, configuredMAC string) (diagnostics diag.Diagnostics) {
 	dhcpLease, err := c.GetDHCPStaticLease(ctx, lanInterfaceHost.ID)
 	if err != nil {
 		diagnostics.AddError("Failed to read DHCP lease after write", err.Error())
 		return
 	}
-	return v.fromDHCPStaticLeaseInfo(dhcpLease)
+	return v.fromDHCPStaticLeaseInfo(dhcpLease, configuredHostname, configuredMAC)
 }
 
-func (v *dhcpLeaseModel) fromDHCPStaticLeaseInfo(dhcpLeaseInfo freeboxTypes.DHCPStaticLeaseInfo) (diagnostics diag.Diagnostics) {
+func (v *dhcpLeaseModel) fromDHCPStaticLeaseInfo(dhcpLeaseInfo freeboxTypes.DHCPStaticLeaseInfo, configuredHostname, configuredMAC string) (diagnostics diag.Diagnostics) {
 	v.ID = basetypes.NewStringValue(dhcpLeaseInfo.ID)
-	v.Mac = basetypes.NewStringValue(dhcpLeaseInfo.Mac)
-	v.Hostname = basetypes.NewStringValue(dhcpLeaseInfo.Hostname)
+	if configuredMAC != "" && strings.EqualFold(configuredMAC, dhcpLeaseInfo.Mac) {
+		v.Mac = basetypes.NewStringValue(configuredMAC)
+	} else {
+		v.Mac = basetypes.NewStringValue(normalizeMAC(dhcpLeaseInfo.Mac))
+	}
+	v.Hostname = basetypes.NewStringValue(dhcpLeaseHostname(dhcpLeaseInfo, configuredHostname))
 	v.IP = basetypes.NewStringValue(dhcpLeaseInfo.IP)
 	v.Comment = basetypes.NewStringValue(dhcpLeaseInfo.Comment)
 	return diagnostics
@@ -85,7 +103,7 @@ func (v *dhcpLeaseModel) ToObjectValue() basetypes.ObjectValue {
 }
 
 func (v *dhcpLeaseModel) toClientPayload() (payload freeboxTypes.DHCPStaticLeasePayload, diagnostics diag.Diagnostics) {
-	payload.Mac = v.Mac.ValueString()
+	payload.Mac = normalizeMAC(v.Mac.ValueString())
 	payload.Hostname = v.Hostname.ValueString()
 	payload.IP = v.IP.ValueString()
 	payload.Comment = v.Comment.ValueString()
@@ -117,7 +135,7 @@ func (v *dhcpLeaseResource) Schema(ctx context.Context, req resource.SchemaReque
 							if mac.IsNull() || mac.IsUnknown() {
 								return
 							}
-							req.Plan.SetAttribute(ctx, path.Root("id"), basetypes.NewStringValue(strings.ToUpper(mac.ValueString())))
+							req.Plan.SetAttribute(ctx, path.Root("id"), basetypes.NewStringValue(normalizeMAC(mac.ValueString())))
 						}
 					}, "", "If the state value is empty, set the id from the mac address"),
 				},
@@ -186,6 +204,9 @@ func (v *dhcpLeaseResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
+	configuredHostname := model.Hostname.ValueString()
+	configuredMAC := model.Mac.ValueString()
+
 	payload, diagnostics := model.toClientPayload()
 	if diagnostics.HasError() {
 		resp.Diagnostics.Append(diagnostics...)
@@ -201,7 +222,7 @@ func (v *dhcpLeaseResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	if d := model.fromLanInterfaceHost(ctx, v.client, lanInterfaceHost); d.HasError() {
+	if d := model.fromLanInterfaceHost(ctx, v.client, lanInterfaceHost, configuredHostname, configuredMAC); d.HasError() {
 		resp.Diagnostics.Append(d...)
 		return
 	}
@@ -233,7 +254,10 @@ func (v *dhcpLeaseResource) Read(ctx context.Context, req resource.ReadRequest, 
 		return
 	}
 
-	if d := model.fromDHCPStaticLeaseInfo(dhcpLease); d.HasError() {
+	configuredHostname := model.Hostname.ValueString()
+	configuredMAC := model.Mac.ValueString()
+
+	if d := model.fromDHCPStaticLeaseInfo(dhcpLease, configuredHostname, configuredMAC); d.HasError() {
 		resp.Diagnostics.Append(d...)
 		return
 	}
@@ -250,6 +274,9 @@ func (v *dhcpLeaseResource) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 
+	configuredHostname := newModel.Hostname.ValueString()
+	configuredMAC := newModel.Mac.ValueString()
+
 	payload, diagnostics := newModel.toClientPayload()
 	if diagnostics.HasError() {
 		resp.Diagnostics.Append(diagnostics...)
@@ -265,7 +292,7 @@ func (v *dhcpLeaseResource) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 
-	if d := newModel.fromLanInterfaceHost(ctx, v.client, lanInterfaceHost); d.HasError() {
+	if d := newModel.fromLanInterfaceHost(ctx, v.client, lanInterfaceHost, configuredHostname, configuredMAC); d.HasError() {
 		resp.Diagnostics.Append(d...)
 		return
 	}

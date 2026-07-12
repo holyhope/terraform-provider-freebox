@@ -1,0 +1,1 @@
+terraform import "freebox_virtual_machine_power.example" 42

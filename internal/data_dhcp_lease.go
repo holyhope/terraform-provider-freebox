@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -96,7 +95,7 @@ func (v *dhcpLeaseDataSource) Read(ctx context.Context, req datasource.ReadReque
 		return
 	}
 
-	dhcpLease, err := v.client.GetDHCPStaticLease(ctx, strings.ToLower(model.Mac.ValueString()))
+	dhcpLease, err := v.client.GetDHCPStaticLease(ctx, normalizeMAC(model.Mac.ValueString()))
 	if err != nil {
 		var apiErr *client.APIError
 		if errors.As(err, &apiErr) && apiErr.Code == "noent" {
@@ -114,7 +113,7 @@ func (v *dhcpLeaseDataSource) Read(ctx context.Context, req datasource.ReadReque
 		return
 	}
 
-	if diags := model.fromDHCPStaticLeaseInfo(dhcpLease); diags.HasError() {
+	if diags := model.fromDHCPStaticLeaseInfo(dhcpLease, "", ""); diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return
 	}

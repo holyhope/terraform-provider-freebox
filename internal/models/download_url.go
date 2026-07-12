@@ -34,6 +34,12 @@ func (s *downloadURLValidator) ValidateString(ctx context.Context, req validator
 	if req.ConfigValue.ValueString() == "" {
 		return
 	}
+	if req.ConfigValue.IsUnknown() {
+		return
+	}
+	if req.ConfigValue.ValueString() == "" {
+		return
+	}
 
 	// The null case should be handled by required attribute or conflicts with other validators.
 	if sourceURL.IsNull() || sourceURL.IsUnknown() {

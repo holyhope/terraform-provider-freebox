@@ -88,7 +88,7 @@ type virtualMachineModel struct {
 
 func (v *virtualMachineModel) fromClientType(virtualMachine freeboxTypes.VirtualMachine) (diagnostics diag.Diagnostics) {
 	v.ID = basetypes.NewInt64Value(virtualMachine.ID)
-	v.Mac = basetypes.NewStringValue(virtualMachine.Mac)
+	v.Mac = basetypes.NewStringValue(normalizeMAC(virtualMachine.Mac))
 	v.Status = basetypes.NewStringValue(virtualMachine.Status)
 	v.Name = basetypes.NewStringValue(virtualMachine.Name)
 	v.DiskPath = basetypes.NewStringValue(string(virtualMachine.DiskPath))
@@ -887,6 +887,9 @@ func (v *virtualMachineResource) stop(ctx context.Context, identifier int64, kil
 }
 
 func (v *virtualMachineResource) getNetworkBinds(ctx context.Context, virtualMachine freeboxTypes.VirtualMachine, networkingTimeout time.Duration) ([]networkBind, error) {
+	if virtualMachine.Status == freeboxTypes.StoppedStatus {
+		return nil, nil
+	}
 	timeoutDeadline := time.After(networkingTimeout)
 	for {
 		var binds []networkBind
