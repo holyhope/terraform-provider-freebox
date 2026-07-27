@@ -36,17 +36,17 @@ type networkControlDataSource struct {
 }
 
 type NetworkControlModel struct {
-	ProfileID types.Int64 `tfsdk:"profile_id"`
-	NextChange timetypes.GoDuration `tfsdk:"next_change"`
-	OverrideMode types.String `tfsdk:"override_mode"`
-	CurrentMode types.String `tfsdk:"current_mode"`
-	RuleMode types.String `tfsdk:"rule_mode"`
-	OverrideUntil types.Int64 `tfsdk:"override_until"`
-	Override types.Bool `tfsdk:"override"`
-	Macs types.List `tfsdk:"macs"`
-	Hosts types.List `tfsdk:"hosts"`
-	Resolution types.Int64 `tfsdk:"resolution"`
-	CustomDayRanges types.List `tfsdk:"custom_day_ranges"`
+	ProfileID       types.Int64          `tfsdk:"profile_id"`
+	NextChange      timetypes.GoDuration `tfsdk:"next_change"`
+	OverrideMode    types.String         `tfsdk:"override_mode"`
+	CurrentMode     types.String         `tfsdk:"current_mode"`
+	RuleMode        types.String         `tfsdk:"rule_mode"`
+	OverrideUntil   types.Int64          `tfsdk:"override_until"`
+	Override        types.Bool           `tfsdk:"override"`
+	Macs            types.List           `tfsdk:"macs"`
+	Hosts           types.List           `tfsdk:"hosts"`
+	Resolution      types.Int64          `tfsdk:"resolution"`
+	CustomDayRanges types.List           `tfsdk:"custom_day_ranges"`
 }
 
 func (o *NetworkControlModel) FromNetworkControlInfo(networkControl freeboxTypes.NetworkControlInfo) (diagnostics diag.Diagnostics) {
@@ -91,7 +91,7 @@ func (v *networkControlDataSource) Schema(ctx context.Context, req datasource.Sc
 		MarkdownDescription: "Get the network control (parental control / scheduled access) settings of a Freebox profile.",
 		Attributes: map[string]schema.Attribute{
 			"profile_id": schema.Int64Attribute{
-				Required: true,
+				Required:            true,
 				MarkdownDescription: "Id of the profile this network control is associated with.",
 				Validators: []validator.Int64{
 					int64validator.AtLeast(1),
@@ -138,7 +138,7 @@ func (v *networkControlDataSource) Schema(ctx context.Context, req datasource.Sc
 			"macs": schema.ListAttribute{
 				Computed:            true,
 				MarkdownDescription: "List of mac adresses associated with this profile’s network control.",
-				ElementType: types.StringType,
+				ElementType:         types.StringType,
 				Validators: []validator.List{
 					listvalidator.ValueStringsAre(
 						stringvalidator.RegexMatches(regexp.MustCompile(`^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$`), "Must be a valid MAC address"),
@@ -165,7 +165,7 @@ func (v *networkControlDataSource) Schema(ctx context.Context, req datasource.Sc
 			"custom_day_ranges": schema.ListAttribute{
 				Computed:            true,
 				MarkdownDescription: "List of custom day range, each custom day range represents a group of days for which you want to use a different planning than other week days.",
-				ElementType: types.StringType,
+				ElementType:         types.StringType,
 				Validators: []validator.List{
 					listvalidator.ValueStringsAre(
 						models.NetworkControlDayRangeValidator(),
