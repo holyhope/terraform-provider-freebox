@@ -20,6 +20,7 @@
   - [Data Sources]()
     - [freebox_api_version](./data-sources/api_version.md)
     - [freebox_dhcp_lease](./data-sources/dhcp_lease.md)
+    - [freebox_dhcp_leases](./data-sources/dhcp_leases.md)
     - [freebox_lan_config](./data-sources/lan_config.md)
     - [freebox_lan_interface_host](./data-sources/lan_interface_host.md)
     - [freebox_lan_interface_hosts](./data-sources/lan_interface_hosts.md)
