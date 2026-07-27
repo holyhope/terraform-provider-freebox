@@ -154,18 +154,25 @@ var _ = Describe(`resource "freebox_remote_directory" { ... }`, func() {
 	})
 
 	Context("import", func() {
+		BeforeEach(func(ctx SpecContext) {
+			_, err := freeboxClient.CreateDirectory(ctx, go_path.Join(root, existingDisk.directory), directoryName)
+			Expect(err).To(BeNil())
+		})
+
 		It("should import the directory by its path", func(ctx SpecContext) {
 			resource.UnitTest(GinkgoT(), resource.TestCase{
 				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 				Steps: []resource.TestStep{
 					{
-						Config: initialConfig,
-					},
-					{
-						ResourceName:      "freebox_remote_directory." + resourceName,
-						ImportState:       true,
-						ImportStateId:     directoryPath,
-						ImportStateVerify: true,
+						Config:             initialConfig,
+						ResourceName:       "freebox_remote_directory." + resourceName,
+						ImportState:        true,
+						ImportStateId:      directoryPath,
+						ImportStatePersist: true,
+						Check: resource.ComposeAggregateTestCheckFunc(
+							resource.TestCheckResourceAttr("freebox_remote_directory."+resourceName, "destination_path", directoryPath),
+						),
+						Destroy: true,
 					},
 				},
 				CheckDestroy: func(s *terraform.State) error {
