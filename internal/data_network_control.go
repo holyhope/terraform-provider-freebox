@@ -88,7 +88,7 @@ func (v *networkControlDataSource) Metadata(ctx context.Context, req datasource.
 
 func (v *networkControlDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manages a virtual machine instance within a Freebox. See the [Freebox blog](https://dev.freebox.fr/blog/?p=5450) for additional details",
+		MarkdownDescription: "Get the network control (parental control / scheduled access) settings of a Freebox profile.",
 		Attributes: map[string]schema.Attribute{
 			"profile_id": schema.Int64Attribute{
 				Required: true,
