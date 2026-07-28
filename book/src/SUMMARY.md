@@ -26,6 +26,7 @@
     - [freebox_lan_interface_hosts](./data-sources/lan_interface_hosts.md)
     - [freebox_lan_interfaces](./data-sources/lan_interfaces.md)
     - [freebox_lan_system_info](./data-sources/system_info.md)
+    - [freebox_netshare_samba_configuration](./data-sources/netshare_samba_configuration.md)
     - [freebox_network_control](./data-sources/network_control.md)
     - [freebox_profiles](./data-sources/profiles.md)
     - [freebox_virtual_disk](./data-sources/virtual_disk.md)
