@@ -28,28 +28,22 @@ type vpnUserResource struct {
 }
 
 type vpnUserModel struct {
-	Login       types.String `tfsdk:"login"`
-	Password    types.String `tfsdk:"password"`
-	Description types.String `tfsdk:"description"`
-	OVPNConfig  types.String `tfsdk:"ovpn_config"`
+	Login      types.String `tfsdk:"login"`
+	Password   types.String `tfsdk:"password"`
+	OVPNConfig types.String `tfsdk:"ovpn_config"`
 }
 
 func (m *vpnUserModel) toPayload() freeboxTypes.VPNUserPayload {
 	return freeboxTypes.VPNUserPayload{
-		Login:       m.Login.ValueString(),
-		Password:    m.Password.ValueString(),
-		Description: m.Description.ValueString(),
+		Login:    m.Login.ValueString(),
+		Password: m.Password.ValueString(),
 	}
 }
 
+// fromClientType only copies Login; Password is write-only on the Freebox API,
+// so the value from config/state is left untouched.
 func (m *vpnUserModel) fromClientType(user freeboxTypes.VPNUser) {
 	m.Login = basetypes.NewStringValue(user.Login)
-	// Password is write-only on the Freebox API; preserve the value from config
-	if user.Description != "" {
-		m.Description = basetypes.NewStringValue(user.Description)
-	} else {
-		m.Description = basetypes.NewStringNull()
-	}
 }
 
 func (v *vpnUserResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -71,10 +65,6 @@ func (v *vpnUserResource) Schema(ctx context.Context, req resource.SchemaRequest
 				MarkdownDescription: "VPN password",
 				Required:            true,
 				Sensitive:           true,
-			},
-			"description": schema.StringAttribute{
-				MarkdownDescription: "Optional description of the VPN user",
-				Optional:            true,
 			},
 			"ovpn_config": schema.StringAttribute{
 				MarkdownDescription: "OpenVPN client configuration file content (.ovpn format). Ready to import into any OpenVPN client.",
