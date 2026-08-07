@@ -136,6 +136,8 @@ func (v *vpnUserResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
+	existingOVPNConfig := model.OVPNConfig
+
 	user, err := v.client.GetVPNUser(ctx, model.Login.ValueString())
 	if err != nil {
 		if err == client.ErrVPNUserNotFound {
@@ -151,16 +153,26 @@ func (v *vpnUserResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	model.fromClientType(user)
 
-	ovpnConfig, err := v.client.GetVPNUserClientConfig(ctx, model.Login.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to get VPN client config",
-			err.Error(),
-		)
-		return
-	}
+	// The Freebox API embeds a freshly generated certificate in the response
+	// on every call to GetVPNUserClientConfig, so re-fetching here would make
+	// ovpn_config look like it changes on every refresh even though the
+	// server-side config is stable (it only changes when the user is
+	// recreated). Preserve the value already in state, same as Update does,
+	// and only fetch it when state doesn't have one yet (e.g. after import).
+	if existingOVPNConfig.ValueString() != "" {
+		model.OVPNConfig = existingOVPNConfig
+	} else {
+		ovpnConfig, err := v.client.GetVPNUserClientConfig(ctx, model.Login.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Failed to get VPN client config",
+				err.Error(),
+			)
+			return
+		}
 
-	model.OVPNConfig = basetypes.NewStringValue(ovpnConfig)
+		model.OVPNConfig = basetypes.NewStringValue(ovpnConfig)
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
