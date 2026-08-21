@@ -3,6 +3,7 @@ package internal_test
 import (
 	go_path "path"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -141,6 +142,74 @@ var _ = Describe(`resource "freebox_remote_directory" { ... }`, func() {
 
 								return nil
 							},
+						),
+					},
+				},
+				CheckDestroy: func(s *terraform.State) error {
+					_, err := freeboxClient.GetFileInfo(ctx, renamedPath)
+					Expect(err).To(MatchError(client.ErrPathNotFound), "directory %s should not exist", renamedPath)
+					return nil
+				},
+			})
+		})
+
+		It("should preserve configured attributes when moving the directory", func(ctx SpecContext) {
+			renamedPath := directoryPath + "-renamed"
+
+			resource.UnitTest(GinkgoT(), resource.TestCase{
+				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+				Steps: []resource.TestStep{
+					{
+						Config: providerBlock + `
+							resource "freebox_remote_directory" "` + resourceName + `" {
+								destination_path = "` + directoryPath + `"
+								parents          = false
+								remove_all       = false
+
+								polling = {
+									move = {
+										interval = "2s"
+										timeout  = "2m"
+									}
+									delete = {
+										interval = "2s"
+										timeout  = "2m"
+									}
+								}
+							}
+						`,
+						Check: resource.ComposeAggregateTestCheckFunc(
+							resource.TestCheckResourceAttr("freebox_remote_directory."+resourceName, "parents", "false"),
+							resource.TestCheckResourceAttr("freebox_remote_directory."+resourceName, "remove_all", "false"),
+							resource.TestCheckResourceAttrWith("freebox_remote_directory."+resourceName, "polling.move.interval", durationEqualFunc(2*time.Second)),
+							resource.TestCheckResourceAttrWith("freebox_remote_directory."+resourceName, "polling.move.timeout", durationEqualFunc(2*time.Minute)),
+						),
+					},
+					{
+						Config: providerBlock + `
+							resource "freebox_remote_directory" "` + resourceName + `" {
+								destination_path = "` + renamedPath + `"
+								parents          = false
+								remove_all       = false
+
+								polling = {
+									move = {
+										interval = "2s"
+										timeout  = "2m"
+									}
+									delete = {
+										interval = "2s"
+										timeout  = "2m"
+									}
+								}
+							}
+						`,
+						Check: resource.ComposeAggregateTestCheckFunc(
+							resource.TestCheckResourceAttr("freebox_remote_directory."+resourceName, "destination_path", renamedPath),
+							resource.TestCheckResourceAttr("freebox_remote_directory."+resourceName, "parents", "false"),
+							resource.TestCheckResourceAttr("freebox_remote_directory."+resourceName, "remove_all", "false"),
+							resource.TestCheckResourceAttrWith("freebox_remote_directory."+resourceName, "polling.move.interval", durationEqualFunc(2*time.Second)),
+							resource.TestCheckResourceAttrWith("freebox_remote_directory."+resourceName, "polling.move.timeout", durationEqualFunc(2*time.Minute)),
 						),
 					},
 				},

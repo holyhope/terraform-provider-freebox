@@ -179,8 +179,9 @@ func (v *remoteDirectoryResource) Create(ctx context.Context, req resource.Creat
 
 	path := model.DestinationPath.ValueString()
 
-	if diags := v.createParentDirectoriesIfNeeded(ctx, &model); diags.HasError() {
-		resp.Diagnostics.Append(diags...)
+	diags := v.createParentDirectoriesIfNeeded(ctx, &model)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
@@ -188,10 +189,24 @@ func (v *remoteDirectoryResource) Create(ctx context.Context, req resource.Creat
 
 	_, err := v.client.CreateDirectory(ctx, parent, name)
 	if err != nil {
-		if !errors.Is(err, client.ErrDestinationConflict) {
-			resp.Diagnostics.AddError("Failed to create directory", fmt.Sprintf("Path: %s, Error: %s", path, err.Error()))
+		if errors.Is(err, client.ErrDestinationConflict) {
+			fileInfo, infoErr := v.client.GetFileInfo(ctx, path)
+			if infoErr != nil {
+				resp.Diagnostics.AddError("Failed to inspect existing path", fmt.Sprintf("Path: %s, Error: %s", path, infoErr.Error()))
+				return
+			}
+
+			if fileInfo.Type == freeboxTypes.FileTypeDirectory {
+				resp.Diagnostics.AddError("Directory already exists", fmt.Sprintf("Please delete the directory %q or import it into the state", path))
+				return
+			}
+
+			resp.Diagnostics.AddError("Path already exists and is not a directory", fmt.Sprintf("Path: %s, Type: %s", path, fileInfo.Type))
 			return
 		}
+
+		resp.Diagnostics.AddError("Failed to create directory", fmt.Sprintf("Path: %s, Error: %s", path, err.Error()))
+		return
 	}
 
 	if diags := resp.State.Set(ctx, &model); diags.HasError() {
@@ -205,31 +220,40 @@ func (v *remoteDirectoryResource) createParentDirectoriesIfNeeded(ctx context.Co
 		return
 	}
 
-	parent := ""
-	for _, path := range strings.Split(strings.TrimPrefix(go_path.Dir(model.DestinationPath.ValueString()), "/"), "/") {
-		_, err := v.client.CreateDirectory(ctx, parent, path)
+	destinationParent := go_path.Dir(model.DestinationPath.ValueString())
+	if destinationParent == "." || destinationParent == "/" {
+		return
+	}
 
-		parent += "/" + path
-
+	parent := "/"
+	for _, child := range strings.Split(strings.TrimPrefix(destinationParent, "/"), "/") {
+		newParent, err := v.client.CreateDirectory(ctx, parent, child)
 		if err != nil {
+			parentPath := go_path.Join(parent, child)
+
 			if errors.Is(err, client.ErrDestinationConflict) {
-				continue
-			}
-			/*
-				if i == 0 { // The first path is the parent directory, so we probably don't have access to it
-					var apiError *client.APIError
-					if errors.As(err, &apiError) {
-						if apiError.Code == string(freeboxTypes.AccessDeniedErrorCode) {
-							continue
-						}
-					}
+				fileInfo, infoErr := v.client.GetFileInfo(ctx, parentPath)
+				if infoErr != nil {
+					diagnostics.AddError("Failed to inspect parent path", fmt.Sprintf("Path: %s, Error: %s", parentPath, infoErr.Error()))
+					return
 				}
-			*/
-			diagnostics.AddWarning("Failed to create parent directory", fmt.Sprintf("Path: %s, Error: %s", go_path.Join(parent, path), err.Error()))
-			continue
+
+				if fileInfo.Type == freeboxTypes.FileTypeDirectory {
+					parent = parentPath
+					continue
+				}
+
+				diagnostics.AddError("Parent path exists and is not a directory", fmt.Sprintf("Path: %s, Type: %s", parentPath, fileInfo.Type))
+				return
+			}
+
+			diagnostics.AddError("Failed to create parent directory", fmt.Sprintf("Path: %s, Error: %s", parentPath, err.Error()))
+			return
 		}
 
-		tflog.Debug(ctx, "Created directory", map[string]interface{}{
+		parent = newParent
+
+		tflog.Debug(ctx, "Created parent directory", map[string]interface{}{
 			"parent": parent,
 		})
 	}
@@ -283,8 +307,6 @@ func (v *remoteDirectoryResource) Update(ctx context.Context, req resource.Updat
 		return
 	}
 
-	newModel.populateDefaults()
-
 	oldPath := oldModel.DestinationPath.ValueString()
 	newPath := newModel.DestinationPath.ValueString()
 
@@ -296,8 +318,9 @@ func (v *remoteDirectoryResource) Update(ctx context.Context, req resource.Updat
 	}
 
 	if oldPath != newPath {
-		if diags := v.createParentDirectoriesIfNeeded(ctx, &newModel); diags.HasError() {
-			resp.Diagnostics.Append(diags...)
+		diags := v.createParentDirectoriesIfNeeded(ctx, &newModel)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
 			return
 		}
 
@@ -354,7 +377,7 @@ func (v *remoteDirectoryResource) Delete(ctx context.Context, req resource.Delet
 		}
 	}
 
-	// Delete the file
+	// Delete the directory
 	var polling remoteDirectoryPollingModel
 
 	if diags := model.Polling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
@@ -369,7 +392,7 @@ func (v *remoteDirectoryResource) Delete(ctx context.Context, req resource.Delet
 		return
 	}
 
-	tflog.Info(ctx, "Deleting the file...", map[string]interface{}{
+	tflog.Info(ctx, "Deleting the directory...", map[string]interface{}{
 		"path": model.DestinationPath.ValueString(),
 	})
 
@@ -382,13 +405,13 @@ func (v *remoteDirectoryResource) Delete(ctx context.Context, req resource.Delet
 func (v *remoteDirectoryResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	path := req.ID
 
-	tflog.Info(ctx, "Reading the file metadata...", map[string]interface{}{
+	tflog.Info(ctx, "Reading the directory metadata...", map[string]interface{}{
 		"path": path,
 	})
 
 	fileInfo, err := v.client.GetFileInfo(ctx, path)
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to get file", fmt.Sprintf("Path: %s, Error: %s", path, err.Error()))
+		resp.Diagnostics.AddError("Failed to get directory", fmt.Sprintf("Path: %s, Error: %s", path, err.Error()))
 		return
 	}
 
@@ -403,7 +426,7 @@ func (v *remoteDirectoryResource) ImportState(ctx context.Context, req resource.
 		resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 	}()
 
-	model.DestinationPath = types.StringValue(path)
+	model.populateFromFileInfo(fileInfo)
 
 	model.populateDefaults()
 }
