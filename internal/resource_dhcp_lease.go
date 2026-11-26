@@ -28,6 +28,50 @@ var (
 	_ resource.ResourceWithImportState = &dhcpLeaseResource{}
 )
 
+// dhcpLeaseHostnameModifier marks the planned "hostname" value as unknown whenever
+// Terraform cannot guarantee that the configured value will actually be stored by
+// the Freebox. The Freebox DHCP static-lease API accepts a hostname on write, but
+// does not durably honor it: as soon as the target device talks to the box over
+// DHCP, the Freebox overwrites the lease's reported hostname with whatever the
+// device itself announces (observed live as e.g. "vmc" or "lwip0" overriding a
+// configured "unknown-<mac>" value). Pinning the planned value to the literal
+// config value in that situation makes the subsequent read-after-write in
+// Create/Update produce a final state that differs from what was planned, which
+// Terraform's plugin protocol rejects as "Provider produced inconsistent result
+// after apply". Marking the plan unknown whenever a change is actually being
+// requested (or on create) tells Terraform to accept whatever value Create/Update
+// end up reading back from the API as the authoritative result.
+type dhcpLeaseHostnameModifier struct{}
+
+func (m dhcpLeaseHostnameModifier) Description(_ context.Context) string {
+	return "Keeps the hostname stable when unchanged, but marks it unknown whenever a new value is requested, since the Freebox may silently override it with the hostname announced by the connected device."
+}
+
+func (m dhcpLeaseHostnameModifier) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
+}
+
+func (m dhcpLeaseHostnameModifier) PlanModifyString(_ context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
+	if req.ConfigValue.IsNull() && !req.StateValue.IsNull() {
+		// No hostname configured: keep reflecting whatever is already known so
+		// unrelated updates do not needlessly touch this attribute.
+		resp.PlanValue = req.StateValue
+		return
+	}
+
+	if req.StateValue.IsNull() || !req.ConfigValue.Equal(req.StateValue) {
+		// Either this is a create, or the configuration is requesting a hostname
+		// change. The Freebox is not guaranteed to honor it, so defer to whatever
+		// Create/Update read back from the API instead of promising the literal
+		// configured value.
+		resp.PlanValue = basetypes.NewStringUnknown()
+		return
+	}
+
+	// Configured value matches the current state: nothing is being changed.
+	resp.PlanValue = req.StateValue
+}
+
 // dhcpLeaseHostname returns the hostname to store in state. When the Freebox API
 // has not yet learned a hostname (e.g. device still offline), it returns the MAC
 // address as a placeholder; in that case the configured value is preserved.
@@ -158,14 +202,17 @@ func (v *dhcpLeaseResource) Schema(ctx context.Context, req resource.SchemaReque
 				},
 			},
 			"hostname": schema.StringAttribute{
-				Computed:            true,
-				Optional:            true,
-				MarkdownDescription: "Hostname of the target device",
+				Computed: true,
+				Optional: true,
+				MarkdownDescription: "Hostname of the target device. The Freebox does not durably honor an " +
+					"arbitrary value here: once the device talks to the box over DHCP, the Freebox overwrites " +
+					"this with whatever hostname the device itself announces, overriding the configured value. " +
+					"The final state always reflects what the Freebox actually reports, not the configured value.",
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+					dhcpLeaseHostnameModifier{},
 				},
 			},
 			"comment": schema.StringAttribute{
